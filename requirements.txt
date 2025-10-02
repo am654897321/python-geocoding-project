@@ -3,3 +3,4 @@ pandas
 requests
 geopy
 gunicorn
+python-dotenv
