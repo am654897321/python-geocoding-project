@@ -1,15 +1,35 @@
-# pricing.py
-
 import pandas as pd
 import re
+import io
 
 def load_tonnage_key(file_path='York Tonnage Key.csv'):
-    """Loads the tonnage key CSV, treating capacity_code as text."""
+    """
+    Loads the tonnage key CSV, forcing the first column to be read as text
+    to preserve leading zeros.
+    """
     try:
-        # Crucially, treat the key column as a string to preserve leading zeros
-        return pd.read_csv(file_path, dtype={'capacity_code': str})
+        with open(file_path, 'r') as f:
+            file_content = f.read()
+        
+        clean_content = file_content.replace('"', '')
+        
+        # --- THE FINAL FIX IS HERE ---
+        # dtype={0: str} forces the first column (index 0) to be read as a string.
+        df = pd.read_csv(io.StringIO(clean_content), dtype={0: str})
+
+        # --- Rename columns for consistency ---
+        df = df.rename(columns={
+            df.columns[0]: 'capacity_code',
+            df.columns[1]: 'tons'
+        })
+        
+        return df
+        
     except FileNotFoundError:
         print(f"ERROR: The tonnage key file '{file_path}' was not found.")
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred while loading the key file: {e}")
         return None
 
 def parse_and_price(text, tonnage_key_df):
@@ -19,9 +39,6 @@ def parse_and_price(text, tonnage_key_df):
     if tonnage_key_df is None:
         return {"error": "Tonnage key file not loaded."}
 
-    # --- 1. IDENTIFICATION RULES ---
-    
-    # Ignore serial numbers first
     serial_patterns = [
         r'(?<![A-Z0-9])(?=[A-Z0-9]*\d)[A-Z0-9]{10}(?![A-Z0-9])',
         r'(?i)(?:serial\s?no?\.?#?|s/n|sn)\s*([A-Z0-9-]{10,})'
@@ -29,19 +46,14 @@ def parse_and_price(text, tonnage_key_df):
     for pattern in serial_patterns:
         text = re.sub(pattern, '', text)
 
-    # Find model candidates
     model_pattern = r'\b[A-Z]{2}(?:\d{3}|\d{2}[A-Z])[A-Z0-9-]*\b'
-    # Find all unique models in order of appearance
     seen = set()
     models_in_order = [m.upper() for m in re.findall(model_pattern, text, re.IGNORECASE) if not (m.upper() in seen or seen.add(m.upper()))]
     
     priced_items = []
     needs_clarification = []
     
-    # --- 2. DECODING AND PRICING ---
-    
     for model in models_in_order:
-        # Extract the first 5 chars and then the code
         first_five = re.sub(r'[^A-Z0-9]', '', model)[:5]
         capacity_code = None
         
@@ -50,7 +62,6 @@ def parse_and_price(text, tonnage_key_df):
         elif len(first_five) >= 4 and first_five[2:4].isdigit(): # AA99A format
             capacity_code = first_five[2:4]
 
-        # Lookup in the tonnage key
         if capacity_code:
             match = tonnage_key_df[tonnage_key_df['capacity_code'] == capacity_code]
             if not match.empty:
@@ -79,8 +90,6 @@ def parse_and_price(text, tonnage_key_df):
         else:
             needs_clarification.append({"model": model, "reason": "Could not decode a valid capacity code."})
 
-    # --- 3. SUMMARIZE RESULTS ---
-    
     grand_total = sum(item['unit_price'] for item in priced_items)
     
     return {
@@ -95,7 +104,40 @@ def parse_and_price(text, tonnage_key_df):
 
 def extract_address(text):
     """A simple regex to find a likely street address."""
-    # This pattern looks for a common address format. It can be improved if needed.
     pattern = r'\d{3,}\s+[\w\s\.\,\#]+\b(?:[A-Z]{2})\b\s+\d{5}'
     match = re.search(pattern, text, re.IGNORECASE)
     return match.group(0) if match else None
+
+
+# --- EXAMPLE USAGE / TEST BLOCK ---
+# This entire block must have ZERO indentation.
+if __name__ == "__main__":
+    # NEW: Updated sample text with a more standard address format
+    sample_email_text = """
+    Hi team,
+
+    Please price out the following units for the job at 123 Main Street, Anytown, CA 90210.
+
+    The first unit is a York model ZF037. Its serial is W1C2345678.
+    We also have a rooftop unit, model number PC99A, serial # E9D8765432.
+    Finally, there's an older one, model XX123, which might need clarification.
+
+    Thanks!
+    """
+
+    print("--- Starting Pricing Test ---")
+    
+    tonnage_key = load_tonnage_key('York Tonnage Key.csv')
+    
+    if tonnage_key is not None:
+        results = parse_and_price(sample_email_text, tonnage_key)
+        
+        import json
+        print("\n--- Parsed Results ---")
+        print(json.dumps(results, indent=2))
+        
+        print("\n--- Testing Address Extraction ---")
+        address = extract_address(sample_email_text)
+        print(f"Extracted Address: {address}")
+    else:
+        print("Test could not run because the tonnage key file was not found.")
