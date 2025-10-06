@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 import io
-from collections import Counter # Import the Counter tool
+from collections import Counter
 
 def load_tonnage_key(file_path='York Tonnage Key.csv'):
     """
@@ -14,10 +14,8 @@ def load_tonnage_key(file_path='York Tonnage Key.csv'):
         
         clean_content = file_content.replace('"', '')
         
-        # dtype={0: str} forces the first column (index 0) to be read as a string.
         df = pd.read_csv(io.StringIO(clean_content), dtype={0: str})
 
-        # --- Rename columns for consistency ---
         df = df.rename(columns={
             df.columns[0]: 'capacity_code',
             df.columns[1]: 'tons'
@@ -39,34 +37,30 @@ def parse_and_price(text, tonnage_key_df):
     if tonnage_key_df is None:
         return {"error": "Tonnage key file not loaded."}
 
-    # --- 1. IDENTIFICATION RULES ---
+    # --- 1. IDENTIFICATION RULES (Corrected) ---
     serial_patterns = [
-        r'(?<![A-Z09])(?=[A-Z09]*\d)[A-Z09]{10}(?![A-Z09])',
-        r'(?i)(?:serial\s?no?\.?#?|s/n|sn)\s*([A-Z09-]{10,})'
+        r'(?<![A-Z0-9])(?=[A-Z0-9]*\d)[A-Z0-9]{10}(?![A-Z0-9])',
+        r'(?i)(?:serial\s?no?\.?#?|s/n|sn)\s*([A-Z0-9-]{10,})'
     ]
     for pattern in serial_patterns:
         text = re.sub(pattern, '', text)
 
-    model_pattern = r'\b[A-Z]{2}(?:\d{3}|\d{2}[A-Z])[A-Z09-]*\b'
+    model_pattern = r'\b[A-Z]{2}(?:\d{3}|\d{2}[A-Z])[A-Z0-9-]*\b'
     
-    # --- NEW: Count all model occurrences ---
     all_models_found = [m.upper() for m in re.findall(model_pattern, text, re.IGNORECASE)]
     model_counts = Counter(all_models_found)
-    
-    # Get a unique list but keep original order
-    unique_models_in_order = sorted(model_counts.keys(), key=all_models_found.index)
     
     priced_items = []
     needs_clarification = []
     
-    # --- 2. DECODING AND PRICING ---
+    # --- 2. DECODING AND PRICING (Corrected) ---
     for model, quantity in model_counts.items():
-        first_five = re.sub(r'[^A-Z09]', '', model)[:5]
+        first_five = re.sub(r'[^A-Z0-9]', '', model)[:5]
         capacity_code = None
         
-        if len(first_five) >= 5 and first_five[2:5].isdigit(): # AA999 format
+        if len(first_five) >= 5 and first_five[2:5].isdigit():
             capacity_code = first_five[2:5]
-        elif len(first_five) >= 4 and first_five[2:4].isdigit(): # AA99A format
+        elif len(first_five) >= 4 and first_five[2:4].isdigit():
             capacity_code = first_five[2:4]
 
         if capacity_code:
@@ -74,7 +68,6 @@ def parse_and_price(text, tonnage_key_df):
             if not match.empty:
                 tons = float(match['tons'].iloc[0])
                 unit_price = 0
-                tier = "unknown"
 
                 if 3.0 <= tons <= 10.0:
                     unit_price = 725
@@ -84,10 +77,10 @@ def parse_and_price(text, tonnage_key_df):
                 if unit_price > 0:
                     priced_items.append({
                         "model": model,
-                        "quantity": quantity, # Add quantity
+                        "quantity": quantity,
                         "tons": tons,
                         "unit_price": unit_price,
-                        "line_total": unit_price * quantity # Add line total
+                        "line_total": unit_price * quantity
                     })
                 else:
                     needs_clarification.append({"model": model, "quantity": quantity, "reason": f"Tonnage of {tons} is not in a valid pricing tier."})
