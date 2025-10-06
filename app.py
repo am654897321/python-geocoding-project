@@ -1,27 +1,46 @@
+# app.py
+
 from flask import Flask, request, jsonify
-from find_partners import find_closest_partners # Imports your function
+# Import your two logic modules
+from pricing import parse_and_price, load_tonnage_key, extract_address
+from find_partners import find_closest_partners
 
-# Initialize the Flask application
+# --- INITIALIZATION ---
 app = Flask(__name__)
+# Load the tonnage key ONCE when the app starts for maximum speed
+TONNAGE_KEY_DF = load_tonnage_key() 
 
-# Define a single endpoint for our API
-@app.route('/api/find_closest', methods=['POST'])
-def handle_find_closest():
-    # Get the data that the GPT will send
+# --- API ENDPOINT ---
+@app.route('/api/process_request', methods=['POST'])
+def process_full_request():
     data = request.get_json()
-    
-    # Check if the 'address' key exists in the sent data
-    if not data or 'address' not in data:
-        return jsonify({"error": "Address not provided"}), 400
-        
-    customer_address = data['address']
-    
-    # Call your original function to do the work
-    closest = find_closest_partners(customer_address)
-    
-    # Return the results back to the GPT
-    return jsonify(closest)
+    if not data or 'text' not in data:
+        return jsonify({"error": "No text provided in request"}), 400
 
-# This part is for testing on your local machine
+    messy_text = data['text']
+
+    # --- 1. Get Pricing Info ---
+    pricing_results = parse_and_price(messy_text, TONNAGE_KEY_DF)
+
+    # --- 2. Get Partner Info ---
+    work_address = extract_address(messy_text)
+    partner_results = None
+    if work_address:
+        partner_results = find_closest_partners(work_address)
+    else:
+        partner_results = {"error": "Could not extract a valid address from the text."}
+
+    # --- 3. Combine and Return ---
+    final_response = {
+        "pricing_analysis": pricing_results,
+        "partner_locator": partner_results
+    }
+    
+    return jsonify(final_response)
+
+# Note: The old '/api/find_closest' route is no longer needed
+# but is left here for reference if you want to keep it.
+
 if __name__ == "__main__":
+    # This allows you to test the app locally if you want
     app.run(debug=True, port=5001)
