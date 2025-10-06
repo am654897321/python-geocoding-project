@@ -14,8 +14,10 @@ def load_tonnage_key(file_path='York Tonnage Key.csv'):
         
         clean_content = file_content.replace('"', '')
         
+        # dtype={0: str} forces the first column (index 0) to be read as a string.
         df = pd.read_csv(io.StringIO(clean_content), dtype={0: str})
 
+        # --- Rename columns for consistency ---
         df = df.rename(columns={
             df.columns[0]: 'capacity_code',
             df.columns[1]: 'tons'
@@ -107,3 +109,35 @@ def extract_address(text):
     pattern = r'\d{3,}\s+[\w\s\.\,\#]+\b(?:[A-Z]{2})\b\s+\d{5}'
     match = re.search(pattern, text, re.IGNORECASE)
     return match.group(0) if match else None
+
+# --- EXAMPLE USAGE / TEST BLOCK ---
+# This entire block must have ZERO indentation.
+if __name__ == "__main__":
+    sample_email_text = """
+    Hi team,
+
+    Please price out the following units for the job at 123 Main Street, Anytown, CA 90210.
+
+    The first unit is a York model ZF037. Its serial is W1C2345678.
+    We also have a rooftop unit, model number PC99A, serial # E9D8765432.
+    Finally, there's an older one, model XX123, which might need clarification.
+
+    Thanks!
+    """
+
+    print("--- Starting Pricing Test ---")
+    
+    tonnage_key = load_tonnage_key('York Tonnage Key.csv')
+    
+    if tonnage_key is not None:
+        results = parse_and_price(sample_email_text, tonnage_key)
+        
+        import json
+        print("\n--- Parsed Results ---")
+        print(json.dumps(results, indent=2))
+        
+        print("\n--- Testing Address Extraction ---")
+        address = extract_address(sample_email_text)
+        print(f"Extracted Address: {address}")
+    else:
+        print("Test could not run because the tonnage key file was not found.")
