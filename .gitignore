@@ -4,3 +4,4 @@ __pycache__/
 
 # Secret keys
 .env
+.DS_Store
