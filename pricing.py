@@ -100,7 +100,7 @@ def parse_and_price(text, tonnage_key_df):
             if 3.0 <= tons <= 10.0:
                 unit_price = 800
             elif tons in {12.5, 15, 17.5, 20, 25, 27.5}:
-                unit_price = 900
+                unit_price = 925
 
             if unit_price > 0:
                 priced_items.append({
